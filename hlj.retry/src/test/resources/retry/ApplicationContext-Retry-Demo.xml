@@ -1,0 +1,74 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+                           http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd"
+       default-autowire="byName">
+
+    <!-- 重试逻辑 -->
+    <bean id="demoRetry" class="com.helijia.framework.retry.demo.DemoRetryCallback" />
+    <!-- 恢复逻辑 -->
+    <bean id="demoRecovery" class="com.helijia.framework.retry.demo.DemoRecoveryCallback" />
+
+    <!-- 重试模板方法 -->
+    <bean id="retryTemplate" class="com.helijia.framework.retry.support.RetryTemplate" />
+
+    <bean id="asyncRetryPolicy" class="com.helijia.framework.retry.policy.SimpleAsyncRetryPolicy">
+        <constructor-arg index="0">
+            <array>
+                <value>30</value>
+                <value>60</value>
+                <value>120</value>
+            </array>
+        </constructor-arg>
+    </bean>
+    <bean id="asyncRetryPolicyOnlyOne" class="com.helijia.framework.retry.policy.SimpleAsyncRetryPolicy">
+        <constructor-arg index="0">
+            <array>
+                <value>30</value>
+            </array>
+        </constructor-arg>
+    </bean>
+
+    <bean id="asyncRetryTemplate" class="com.helijia.framework.retry.support.AsyncRetryTemplate">
+        <property name="mqProducerService" ref="mqProducerService" />
+        <property name="retries">
+            <map>
+                <entry key="Demo:AsyncRetry" value-ref="demoRetry" />
+                <entry key="Demo:AsyncRetry-Exhausted" value-ref="demoRetry" />
+                <entry key="Demo:AsyncRetry-Recovery" value-ref="demoRetry" />
+            </map>
+        </property>
+        <property name="recoveries">
+            <map>
+                <entry key="Demo:AsyncRetry-Recovery" value-ref="demoRecovery" />
+            </map>
+        </property>
+        <property name="policies">
+            <map>
+                <entry key="Demo:AsyncRetry-Exhausted" value-ref="asyncRetryPolicyOnlyOne" />
+                <entry key="Demo:AsyncRetry-Recovery" value-ref="asyncRetryPolicyOnlyOne" />
+            </map>
+        </property>
+        <property name="policy" ref="asyncRetryPolicy" />
+    </bean>
+
+    <bean id="asyncRetryJob" class="com.helijia.framework.retry.support.AsyncRetryJob">
+        <property name="asyncRetryTemplate" ref="asyncRetryTemplate" />
+    </bean>
+
+    <bean id="mqProducerService" class="com.helijia.framework.mq.rocketmq.RocketMqProducerService" init-method="start" destroy-method="shutdown">
+        <property name="address" value="127.0.0.1:9876" />
+        <property name="group" value="retry" />
+    </bean>
+    <bean id="mqConsumerService" class="com.helijia.framework.mq.rocketmq.RocketMqConsumerService" init-method="start" destroy-method="shutdown">
+        <property name="address" value="127.0.0.1:9876" />
+        <property name="group" value="retry" />
+        <property name="listener" ref="asyncRetryJob" />
+        <property name="topics">
+            <list>
+                <value>Retry-Demo</value>
+            </list>
+        </property>
+    </bean>
+</beans>
